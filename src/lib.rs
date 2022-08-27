@@ -1,3 +1,5 @@
+#![feature(const_try,const_for)]
+
 /*!
 This crate provides a library for parsing, compiling, and executing regular
 expressions. Its syntax is similar to Perl-style regular expressions, but lacks

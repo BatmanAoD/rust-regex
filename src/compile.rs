@@ -126,7 +126,7 @@ impl Compiler {
     /// The compiler is guaranteed to succeed unless the program exceeds the
     /// specified size limit. If the size limit is exceeded, then compilation
     /// stops and returns an error.
-    pub fn compile(mut self, exprs: &[Hir]) -> result::Result<Program, Error> {
+    pub const fn compile(mut self, exprs: &[Hir]) -> result::Result<Program, Error> {
         debug_assert!(!exprs.is_empty());
         self.num_exprs = exprs.len();
         if exprs.len() == 1 {
@@ -136,7 +136,7 @@ impl Compiler {
         }
     }
 
-    fn compile_one(mut self, expr: &Hir) -> result::Result<Program, Error> {
+    const fn compile_one(mut self, expr: &Hir) -> result::Result<Program, Error> {
         // If we're compiling a forward DFA and we aren't anchored, then
         // add a `.*?` before the first capture group.
         // Other matching engines handle this by baking the logic into the
@@ -149,8 +149,9 @@ impl Compiler {
             self.compiled.start = dotstar_patch.entry;
         }
         self.compiled.captures = vec![None];
+        let closure_next = || self.next_inst();
         let patch =
-            self.c_capture(0, expr)?.unwrap_or_else(|| self.next_inst());
+            self.c_capture(0, expr)?.unwrap_or_else(closure_next);
         if self.compiled.needs_dotstar() {
             self.fill(dotstar_patch.hole, patch.entry);
         } else {
@@ -162,7 +163,7 @@ impl Compiler {
         self.compile_finish()
     }
 
-    fn compile_many(
+    const fn compile_many(
         mut self,
         exprs: &[Hir],
     ) -> result::Result<Program, Error> {
@@ -185,16 +186,18 @@ impl Compiler {
         for (i, expr) in exprs[0..exprs.len() - 1].iter().enumerate() {
             self.fill_to_next(prev_hole);
             let split = self.push_split_hole();
+            let closure_next = || self.next_inst();
             let Patch { hole, entry } =
-                self.c_capture(0, expr)?.unwrap_or_else(|| self.next_inst());
+                self.c_capture(0, expr)?.unwrap_or_else(closure_next);
             self.fill_to_next(hole);
             self.compiled.matches.push(self.insts.len());
             self.push_compiled(Inst::Match(i));
             prev_hole = self.fill_split(split, Some(entry), None);
         }
         let i = exprs.len() - 1;
+        let closure_next = || self.next_inst();
         let Patch { hole, entry } =
-            self.c_capture(0, &exprs[i])?.unwrap_or_else(|| self.next_inst());
+            self.c_capture(0, &exprs[i])?.unwrap_or_else(closure_next);
         self.fill(prev_hole, entry);
         self.fill_to_next(hole);
         self.compiled.matches.push(self.insts.len());
@@ -202,7 +205,7 @@ impl Compiler {
         self.compile_finish()
     }
 
-    fn compile_finish(mut self) -> result::Result<Program, Error> {
+    const fn compile_finish(mut self) -> result::Result<Program, Error> {
         self.compiled.insts =
             self.insts.into_iter().map(|inst| inst.unwrap()).collect();
         self.compiled.byte_classes = self.byte_classes.byte_classes();
@@ -981,7 +984,7 @@ struct CompileClass<'a, 'b> {
 }
 
 impl<'a, 'b> CompileClass<'a, 'b> {
-    fn compile(mut self) -> Result {
+    const fn compile(mut self) -> Result {
         let mut holes = vec![];
         let mut initial_entry = None;
         let mut last_split = Hole::None;
