@@ -1,4 +1,4 @@
-#![feature(const_try,const_for)]
+#![feature(const_try,const_for,fn_traits,unboxed_closures,const_trait_impl,const_mut_refs,const_option)]
 
 /*!
 This crate provides a library for parsing, compiling, and executing regular

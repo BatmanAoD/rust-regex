@@ -55,7 +55,7 @@ impl Compiler {
     /// Create a new regular expression compiler.
     ///
     /// Various options can be set before calling `compile` on an expression.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Compiler {
             insts: vec![],
             compiled: Program::new(),
@@ -72,7 +72,7 @@ impl Compiler {
     /// The size of the resulting program is limited by size_limit. If
     /// the program approximately exceeds the given size (in bytes), then
     /// compilation will stop and return an error.
-    pub fn size_limit(mut self, size_limit: usize) -> Self {
+    pub const fn size_limit(mut self, size_limit: usize) -> Self {
         self.size_limit = size_limit;
         self
     }
@@ -88,7 +88,7 @@ impl Compiler {
     /// instruction is never produced.
     ///
     /// Note that `dfa(true)` implies `bytes(true)`.
-    pub fn bytes(mut self, yes: bool) -> Self {
+    pub const fn bytes(mut self, yes: bool) -> Self {
         self.compiled.is_bytes = yes;
         self
     }
@@ -97,7 +97,7 @@ impl Compiler {
     ///
     /// When enabled (the default), all compiled programs exclusively match
     /// valid UTF-8 bytes.
-    pub fn only_utf8(mut self, yes: bool) -> Self {
+    pub const fn only_utf8(mut self, yes: bool) -> Self {
         self.compiled.only_utf8 = yes;
         self
     }
@@ -109,14 +109,14 @@ impl Compiler {
     /// beginning, then a preceding `.*?` is included in the program. (The NFA
     /// based engines handle the preceding `.*?` explicitly, which is difficult
     /// or impossible in the DFA engine.)
-    pub fn dfa(mut self, yes: bool) -> Self {
+    pub const fn dfa(mut self, yes: bool) -> Self {
         self.compiled.is_dfa = yes;
         self
     }
 
     /// When set, the machine returned is suitable for matching text in
     /// reverse. In particular, all concatenations are flipped.
-    pub fn reverse(mut self, yes: bool) -> Self {
+    pub const fn reverse(mut self, yes: bool) -> Self {
         self.compiled.is_reverse = yes;
         self
     }
@@ -136,6 +136,10 @@ impl Compiler {
         }
     }
 
+    const fn callable_next(&mut self) -> CallableNext {
+        CallableNext { compiler: self }
+    }
+
     const fn compile_one(mut self, expr: &Hir) -> result::Result<Program, Error> {
         // If we're compiling a forward DFA and we aren't anchored, then
         // add a `.*?` before the first capture group.
@@ -149,9 +153,8 @@ impl Compiler {
             self.compiled.start = dotstar_patch.entry;
         }
         self.compiled.captures = vec![None];
-        let closure_next = || self.next_inst();
         let patch =
-            self.c_capture(0, expr)?.unwrap_or_else(closure_next);
+            self.c_capture(0, expr)?.unwrap_or_else(self.callable_next());
         if self.compiled.needs_dotstar() {
             self.fill(dotstar_patch.hole, patch.entry);
         } else {
@@ -186,18 +189,16 @@ impl Compiler {
         for (i, expr) in exprs[0..exprs.len() - 1].iter().enumerate() {
             self.fill_to_next(prev_hole);
             let split = self.push_split_hole();
-            let closure_next = || self.next_inst();
             let Patch { hole, entry } =
-                self.c_capture(0, expr)?.unwrap_or_else(closure_next);
+                self.c_capture(0, expr)?.unwrap_or_else(self.callable_next());
             self.fill_to_next(hole);
             self.compiled.matches.push(self.insts.len());
             self.push_compiled(Inst::Match(i));
             prev_hole = self.fill_split(split, Some(entry), None);
         }
         let i = exprs.len() - 1;
-        let closure_next = || self.next_inst();
         let Patch { hole, entry } =
-            self.c_capture(0, &exprs[i])?.unwrap_or_else(closure_next);
+            self.c_capture(0, &exprs[i])?.unwrap_or_else(self.callable_next());
         self.fill(prev_hole, entry);
         self.fill_to_next(hole);
         self.compiled.matches.push(self.insts.len());
@@ -268,7 +269,7 @@ impl Compiler {
     ///
     /// Ok(None) is returned when an expression is compiled to no
     /// instruction, and so no patch.entry value makes sense.
-    fn c(&mut self, expr: &Hir) -> ResultOrEmpty {
+    const fn c(&mut self, expr: &Hir) -> ResultOrEmpty {
         use crate::prog;
         use regex_syntax::hir::HirKind::*;
 
@@ -392,7 +393,7 @@ impl Compiler {
         }
     }
 
-    fn c_empty(&mut self) -> ResultOrEmpty {
+    const fn c_empty(&mut self) -> ResultOrEmpty {
         // See: https://github.com/rust-lang/regex/security/advisories/GHSA-m5pq-gvj9-9vr8
         // See: CVE-2022-24713
         //
@@ -405,7 +406,7 @@ impl Compiler {
         Ok(None)
     }
 
-    fn c_capture(&mut self, first_slot: usize, expr: &Hir) -> ResultOrEmpty {
+    const fn c_capture(&mut self, first_slot: usize, expr: &Hir) -> ResultOrEmpty {
         if self.num_exprs > 1 || self.compiled.is_dfa {
             // Don't ever compile Save instructions for regex sets because
             // they are never used. They are also never used in DFA programs
@@ -414,7 +415,7 @@ impl Compiler {
         } else {
             let entry = self.insts.len();
             let hole = self.push_hole(InstHole::Save { slot: first_slot });
-            let patch = self.c(expr)?.unwrap_or_else(|| self.next_inst());
+            let patch = self.c(expr)?.unwrap_or_else(self.callable_next());
             self.fill(hole, patch.entry);
             self.fill_to_next(patch.hole);
             let hole = self.push_hole(InstHole::Save { slot: first_slot + 1 });
@@ -422,7 +423,7 @@ impl Compiler {
         }
     }
 
-    fn c_dotstar(&mut self) -> Result {
+    const fn c_dotstar(&mut self) -> Result {
         Ok(if !self.compiled.only_utf8() {
             self.c(&Hir::repetition(hir::Repetition {
                 kind: hir::RepetitionKind::ZeroOrMore,
@@ -440,7 +441,7 @@ impl Compiler {
         })
     }
 
-    fn c_char(&mut self, c: char) -> ResultOrEmpty {
+    const fn c_char(&mut self, c: char) -> ResultOrEmpty {
         if self.compiled.uses_bytes() {
             if c.is_ascii() {
                 let b = c as u8;
@@ -457,7 +458,7 @@ impl Compiler {
         }
     }
 
-    fn c_class(&mut self, ranges: &[hir::ClassUnicodeRange]) -> ResultOrEmpty {
+    const fn c_class(&mut self, ranges: &[hir::ClassUnicodeRange]) -> ResultOrEmpty {
         use std::mem::size_of;
 
         assert!(!ranges.is_empty());
@@ -477,11 +478,11 @@ impl Compiler {
         }
     }
 
-    fn c_byte(&mut self, b: u8) -> ResultOrEmpty {
+    const fn c_byte(&mut self, b: u8) -> ResultOrEmpty {
         self.c_class_bytes(&[hir::ClassBytesRange::new(b, b)])
     }
 
-    fn c_class_bytes(
+    const fn c_class_bytes(
         &mut self,
         ranges: &[hir::ClassBytesRange],
     ) -> ResultOrEmpty {
@@ -511,12 +512,12 @@ impl Compiler {
         Ok(Some(Patch { hole: Hole::Many(holes), entry: first_split_entry }))
     }
 
-    fn c_empty_look(&mut self, look: EmptyLook) -> ResultOrEmpty {
+    const fn c_empty_look(&mut self, look: EmptyLook) -> ResultOrEmpty {
         let hole = self.push_hole(InstHole::EmptyLook { look });
         Ok(Some(Patch { hole, entry: self.insts.len() - 1 }))
     }
 
-    fn c_concat<'a, I>(&mut self, exprs: I) -> ResultOrEmpty
+    const fn c_concat<'a, I>(&mut self, exprs: I) -> ResultOrEmpty
     where
         I: IntoIterator<Item = &'a Hir>,
     {
@@ -540,7 +541,7 @@ impl Compiler {
         Ok(Some(Patch { hole, entry }))
     }
 
-    fn c_alternate(&mut self, exprs: &[Hir]) -> ResultOrEmpty {
+    const fn c_alternate(&mut self, exprs: &[Hir]) -> ResultOrEmpty {
         debug_assert!(
             exprs.len() >= 2,
             "alternates must have at least 2 exprs"
@@ -589,7 +590,7 @@ impl Compiler {
         Ok(Some(Patch { hole: Hole::Many(holes), entry: first_split_entry }))
     }
 
-    fn c_repeat(&mut self, rep: &hir::Repetition) -> ResultOrEmpty {
+    const fn c_repeat(&mut self, rep: &hir::Repetition) -> ResultOrEmpty {
         use regex_syntax::hir::RepetitionKind::*;
         match rep.kind {
             ZeroOrOne => self.c_repeat_zero_or_one(&rep.hir, rep.greedy),
@@ -607,7 +608,7 @@ impl Compiler {
         }
     }
 
-    fn c_repeat_zero_or_one(
+    const fn c_repeat_zero_or_one(
         &mut self,
         expr: &Hir,
         greedy: bool,
@@ -627,7 +628,7 @@ impl Compiler {
         Ok(Some(Patch { hole: Hole::Many(holes), entry: split_entry }))
     }
 
-    fn c_repeat_zero_or_more(
+    const fn c_repeat_zero_or_more(
         &mut self,
         expr: &Hir,
         greedy: bool,
@@ -648,7 +649,7 @@ impl Compiler {
         Ok(Some(Patch { hole: split_hole, entry: split_entry }))
     }
 
-    fn c_repeat_one_or_more(
+    const fn c_repeat_one_or_more(
         &mut self,
         expr: &Hir,
         greedy: bool,
@@ -668,7 +669,7 @@ impl Compiler {
         Ok(Some(Patch { hole: split_hole, entry: entry_rep }))
     }
 
-    fn c_repeat_range_min_or_more(
+    const fn c_repeat_range_min_or_more(
         &mut self,
         expr: &Hir,
         greedy: bool,
@@ -680,7 +681,7 @@ impl Compiler {
         // None).
         let patch_concat = self
             .c_concat(iter::repeat(expr).take(min))?
-            .unwrap_or_else(|| self.next_inst());
+            .unwrap_or_else(self.callable_next());
         if let Some(patch_rep) = self.c_repeat_zero_or_more(expr, greedy)? {
             self.fill(patch_concat.hole, patch_rep.entry);
             Ok(Some(Patch { hole: patch_rep.hole, entry: patch_concat.entry }))
@@ -689,7 +690,7 @@ impl Compiler {
         }
     }
 
-    fn c_repeat_range(
+    const fn c_repeat_range(
         &mut self,
         expr: &Hir,
         greedy: bool,
@@ -704,7 +705,7 @@ impl Compiler {
         }
         // Same reasoning as in c_repeat_range_min_or_more (we know that min <
         // max at this point).
-        let patch_concat = patch_concat.unwrap_or_else(|| self.next_inst());
+        let patch_concat = patch_concat.unwrap_or_else(self.callable_next());
         let initial_entry = patch_concat.entry;
         // It is much simpler to compile, e.g., `a{2,5}` as:
         //
@@ -748,11 +749,11 @@ impl Compiler {
     /// Can be used as a default value for the c_* functions when the call to
     /// c_function is followed by inserting at least one instruction that is
     /// always executed after the ones written by the c* function.
-    fn next_inst(&self) -> Patch {
+    const fn next_inst(&self) -> Patch {
         Patch { hole: Hole::None, entry: self.insts.len() }
     }
 
-    fn fill(&mut self, hole: Hole, goto: InstPtr) {
+    const fn fill(&mut self, hole: Hole, goto: InstPtr) {
         match hole {
             Hole::None => {}
             Hole::One(pc) => {
@@ -766,12 +767,12 @@ impl Compiler {
         }
     }
 
-    fn fill_to_next(&mut self, hole: Hole) {
+    const fn fill_to_next(&mut self, hole: Hole) {
         let next = self.insts.len();
         self.fill(hole, next);
     }
 
-    fn fill_split(
+    const fn fill_split(
         &mut self,
         hole: Hole,
         goto1: Option<InstPtr>,
@@ -1263,5 +1264,16 @@ mod tests {
             set.set_range(i as u8, i as u8);
         }
         assert_eq!(set.byte_classes().len(), 256);
+    }
+}
+
+struct CallableNext<'a> {
+    compiler: &'a mut Compiler
+}
+
+impl<'a> const FnOnce<()> for CallableNext<'a> {
+    type Output = Patch;
+    extern "rust-call" fn call_once(self, args: ()) -> Self::Output {
+        return self.compiler.next_inst()
     }
 }
