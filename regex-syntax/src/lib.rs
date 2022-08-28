@@ -1,3 +1,5 @@
+#![feature(const_try,const_for,fn_traits,unboxed_closures,const_trait_impl,const_mut_refs,const_option,const_slice_index,const_convert)]
+
 /*!
 This crate provides a robust regular expression parser.
 

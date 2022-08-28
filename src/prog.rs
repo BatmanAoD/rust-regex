@@ -77,7 +77,7 @@ pub struct Program {
 impl Program {
     /// Creates an empty instruction sequence. Fields are given default
     /// values.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Program {
             insts: vec![],
             matches: vec![],

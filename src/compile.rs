@@ -375,7 +375,7 @@ impl Compiler {
                 hir::GroupKind::CaptureName { index, ref name } => {
                     if index as usize >= self.compiled.captures.len() {
                         let n = name.to_string();
-                        self.compiled.captures.push(Some(n.clone()));
+                        self.compiled.captures.push(Some(n.to_string()));
                         self.capture_name_idx.insert(n, index as usize);
                     }
                     self.c_capture(2 * index as usize, &g.hir)
@@ -1117,14 +1117,14 @@ struct SuffixCacheKey {
 }
 
 impl SuffixCache {
-    fn new(size: usize) -> Self {
+    const fn new(size: usize) -> Self {
         SuffixCache {
             sparse: vec![0usize; size].into(),
             dense: Vec::with_capacity(size),
         }
     }
 
-    fn get(&mut self, key: SuffixCacheKey, pc: InstPtr) -> Option<InstPtr> {
+    const fn get(&mut self, key: SuffixCacheKey, pc: InstPtr) -> Option<InstPtr> {
         let hash = self.hash(&key);
         let pos = &mut self.sparse[hash];
         if let Some(entry) = self.dense.get(*pos) {
@@ -1137,11 +1137,11 @@ impl SuffixCache {
         None
     }
 
-    fn clear(&mut self) {
+    const fn clear(&mut self) {
         self.dense.clear();
     }
 
-    fn hash(&self, suffix: &SuffixCacheKey) -> usize {
+    const fn hash(&self, suffix: &SuffixCacheKey) -> usize {
         // Basic FNV-1a hash as described:
         // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
         const FNV_PRIME: u64 = 1_099_511_628_211;
@@ -1156,11 +1156,11 @@ impl SuffixCache {
 struct ByteClassSet([bool; 256]);
 
 impl ByteClassSet {
-    fn new() -> Self {
+    const fn new() -> Self {
         ByteClassSet([false; 256])
     }
 
-    fn set_range(&mut self, start: u8, end: u8) {
+    const fn set_range(&mut self, start: u8, end: u8) {
         debug_assert!(start <= end);
         if start > 0 {
             self.0[start as usize - 1] = true;
@@ -1168,7 +1168,7 @@ impl ByteClassSet {
         self.0[end as usize] = true;
     }
 
-    fn set_word_boundary(&mut self) {
+    const fn set_word_boundary(&mut self) {
         // We need to mark all ranges of bytes whose pairs result in
         // evaluating \b differently.
         let iswb = is_word_byte;
@@ -1184,7 +1184,7 @@ impl ByteClassSet {
         }
     }
 
-    fn byte_classes(&self) -> Vec<u8> {
+    const fn byte_classes(&self) -> Vec<u8> {
         // N.B. If you're debugging the DFA, it's useful to simply return
         // `(0..256).collect()`, which effectively removes the byte classes
         // and makes the transitions easier to read.
@@ -1212,7 +1212,7 @@ impl fmt::Debug for ByteClassSet {
     }
 }
 
-fn u32_to_usize(n: u32) -> usize {
+const fn u32_to_usize(n: u32) -> usize {
     // In case usize is less than 32 bits, we need to guard against overflow.
     // On most platforms this compiles to nothing.
     // TODO Use `std::convert::TryFrom` once it's stable.
@@ -1273,7 +1273,7 @@ struct CallableNext<'a> {
 
 impl<'a> const FnOnce<()> for CallableNext<'a> {
     type Output = Patch;
-    extern "rust-call" fn call_once(self, args: ()) -> Self::Output {
+    extern "rust-call" fn call_once(self, _args: ()) -> Self::Output {
         return self.compiler.next_inst()
     }
 }

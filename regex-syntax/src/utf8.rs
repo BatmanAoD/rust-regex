@@ -304,7 +304,7 @@ pub struct Utf8Sequences {
 impl Utf8Sequences {
     /// Create a new iterator over UTF-8 byte ranges for the scalar value range
     /// given.
-    pub fn new(start: char, end: char) -> Self {
+    pub const fn new(start: char, end: char) -> Self {
         let mut it = Utf8Sequences { range_stack: vec![] };
         it.push(start as u32, end as u32);
         it
@@ -315,12 +315,12 @@ impl Utf8Sequences {
     ///
     /// N.B. Benchmarks say that this method is dubious.
     #[doc(hidden)]
-    pub fn reset(&mut self, start: char, end: char) {
+    pub const fn reset(&mut self, start: char, end: char) {
         self.range_stack.clear();
         self.push(start as u32, end as u32);
     }
 
-    fn push(&mut self, start: u32, end: u32) {
+    const fn push(&mut self, start: u32, end: u32) {
         self.range_stack.push(ScalarRange { start, end });
     }
 }
@@ -336,7 +336,7 @@ impl fmt::Debug for ScalarRange {
     }
 }
 
-impl Iterator for Utf8Sequences {
+impl const Iterator for Utf8Sequences {
     type Item = Utf8Sequence;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -390,13 +390,13 @@ impl Iterator for Utf8Sequences {
     }
 }
 
-impl FusedIterator for Utf8Sequences {}
+impl const FusedIterator for Utf8Sequences {}
 
 impl ScalarRange {
     /// split splits this range if it overlaps with a surrogate codepoint.
     ///
     /// Either or both ranges may be invalid.
-    fn split(&self) -> Option<(ScalarRange, ScalarRange)> {
+    const fn split(&self) -> Option<(ScalarRange, ScalarRange)> {
         if self.start < 0xE000 && self.end > 0xD7FF {
             Some((
                 ScalarRange { start: self.start, end: 0xD7FF },
@@ -408,13 +408,13 @@ impl ScalarRange {
     }
 
     /// is_valid returns true if and only if start <= end.
-    fn is_valid(&self) -> bool {
+    const fn is_valid(&self) -> bool {
         self.start <= self.end
     }
 
     /// as_ascii returns this range as a Utf8Range if and only if all scalar
     /// values in this range can be encoded as a single byte.
-    fn as_ascii(&self) -> Option<Utf8Range> {
+    const fn as_ascii(&self) -> Option<Utf8Range> {
         if self.is_ascii() {
             Some(Utf8Range::new(self.start as u8, self.end as u8))
         } else {
@@ -424,7 +424,7 @@ impl ScalarRange {
 
     /// is_ascii returns true if the range is ASCII only (i.e., takes a single
     /// byte to encode any scalar value).
-    fn is_ascii(&self) -> bool {
+    const fn is_ascii(&self) -> bool {
         self.is_valid() && self.end <= 0x7f
     }
 
@@ -433,7 +433,7 @@ impl ScalarRange {
     /// bytes written.
     ///
     /// The slices should have room for at least `MAX_UTF8_BYTES`.
-    fn encode(&self, start: &mut [u8], end: &mut [u8]) -> usize {
+    const fn encode(&self, start: &mut [u8], end: &mut [u8]) -> usize {
         let cs = char::from_u32(self.start).unwrap();
         let ce = char::from_u32(self.end).unwrap();
         let ss = cs.encode_utf8(start);
@@ -443,7 +443,7 @@ impl ScalarRange {
     }
 }
 
-fn max_scalar_value(nbytes: usize) -> u32 {
+const fn max_scalar_value(nbytes: usize) -> u32 {
     match nbytes {
         1 => 0x007F,
         2 => 0x07FF,
